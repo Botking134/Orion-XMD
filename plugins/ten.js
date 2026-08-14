@@ -6,23 +6,27 @@ const axios = require('axios');
 const INVENTORY_PATH = path.join(__dirname, '..', 'storage', 'ben10_inventory.json');
 const activeSpawns = new Map();
 
-// Helper to safely download Wikia / Fandom image buffers with User-Agent
+// Download image buffer with full browser headers to bypass Wikia CDN blocks
 async function getImageBuffer(url) {
     try {
         const response = await axios.get(url, {
             responseType: 'arraybuffer',
             timeout: 10000,
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Referer': 'https://ben10.fandom.com/'
             }
         });
         return Buffer.from(response.data);
     } catch (e) {
-        console.error('[TEN] Image download failed, sending text fallback:', e.message);
+        console.error('[TEN] Image download fallback triggered:', e.message);
         return null;
     }
 }
 
+// Reliable direct Ben 10 Alien Database
 const BEN10_ALIENS = [
     { name: "Heatblast", species: "Pyronite", homeworld: "Pyros", power: 8500, abilities: "Pyrokinesis, Flight", image: "https://static.wikia.nocookie.net/ben10/images/d/d5/Heatblast_OS_Official.png" },
     { name: "XLR8", species: "Kineceleran", homeworld: "Kinet", power: 8200, abilities: "Super Speed, Sharp Claws", image: "https://static.wikia.nocookie.net/ben10/images/7/73/XLR8_OS_Official.png" },
@@ -93,6 +97,7 @@ const alienCmd = {
 
 Use *${ctx.prefix}claimalien ${captcha}* to claim this DNA!`;
 
+            // Download image buffer with full browser headers
             const imgBuffer = await getImageBuffer(alien.image);
 
             if (imgBuffer) {
