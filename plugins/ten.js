@@ -1,9 +1,27 @@
 // plugins/ten.js
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
 
 const INVENTORY_PATH = path.join(__dirname, '..', 'storage', 'ben10_inventory.json');
 const activeSpawns = new Map();
+
+// Helper to safely download Wikia / Fandom image buffers with User-Agent
+async function getImageBuffer(url) {
+    try {
+        const response = await axios.get(url, {
+            responseType: 'arraybuffer',
+            timeout: 10000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+        });
+        return Buffer.from(response.data);
+    } catch (e) {
+        console.error('[TEN] Image download failed, sending text fallback:', e.message);
+        return null;
+    }
+}
 
 const BEN10_ALIENS = [
     { name: "Heatblast", species: "Pyronite", homeworld: "Pyros", power: 8500, abilities: "Pyrokinesis, Flight", image: "https://static.wikia.nocookie.net/ben10/images/d/d5/Heatblast_OS_Official.png" },
@@ -75,10 +93,13 @@ const alienCmd = {
 
 Use *${ctx.prefix}claimalien ${captcha}* to claim this DNA!`;
 
-            await sock.sendMessage(jid, {
-                image: { url: alien.image },
-                caption: caption
-            });
+            const imgBuffer = await getImageBuffer(alien.image);
+
+            if (imgBuffer) {
+                await sock.sendMessage(jid, { image: imgBuffer, caption: caption });
+            } else {
+                await sock.sendMessage(jid, { text: caption });
+            }
 
         } catch (err) {
             console.error('[TEN] Alien spawn error:', err.message);
