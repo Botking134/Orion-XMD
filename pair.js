@@ -54,12 +54,13 @@ async function startBot() {
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update;
 
-        // Request Pairing Code
+        // Request Genuine WhatsApp Pairing Code
         if (phoneNumber && !pairingCodeRequested && !state.creds.registered) {
             pairingCodeRequested = true;
             await delay(4000);
             try {
-                const code = await sock.requestPairingCode(phoneNumber, "ORIONXMD");
+                // Pass only the phone number so WhatsApp generates a valid 8-character pairing code
+                const code = await sock.requestPairingCode(phoneNumber);
                 console.log(`\x1b[32m====================================\x1b[0m`);
                 console.log(`\x1b[32m🔑 YOUR ORION-XMD PAIRING CODE: \x1b[1m\x1b[37m${code}\x1b[0m`);
                 console.log(`\x1b[32m====================================\x1b[0m`);
@@ -95,19 +96,27 @@ async function startBot() {
         }
     });
 
-    // Message Upsert Event Listener -> Delegates to handlers/infinity.js
+    // Message Upsert Event Listener (points to handlers/infinity.js)
     sock.ev.on('messages.upsert', async (chatUpdate) => {
-        const infinity = require('./handlers/infinity');
-        if (infinity && typeof infinity.handleMessage === 'function') {
-            await infinity.handleMessage(sock, chatUpdate);
+        try {
+            const infinity = require('./handlers/infinity');
+            if (infinity && typeof infinity.handleMessage === 'function') {
+                await infinity.handleMessage(sock, chatUpdate);
+            }
+        } catch (e) {
+            console.error('[PAIR] Error processing message:', e.message);
         }
     });
 
-    // Group Participant Update Listener -> Delegates to handlers/infinity.js
+    // Group Participant Update Listener (points to handlers/infinity.js)
     sock.ev.on('group-participants.update', async (update) => {
-        const infinity = require('./handlers/infinity');
-        if (infinity && typeof infinity.handleGroupParticipants === 'function') {
-            await infinity.handleGroupParticipants(sock, update);
+        try {
+            const infinity = require('./handlers/infinity');
+            if (infinity && typeof infinity.handleGroupParticipants === 'function') {
+                await infinity.handleGroupParticipants(sock, update);
+            }
+        } catch (e) {
+            console.error('[PAIR] Error processing group update:', e.message);
         }
     });
 }
