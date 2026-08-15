@@ -4,10 +4,10 @@ const path = require('path');
 const config = require('../config');
 const commands = require('../commands');
 
-// Hardcoded Developer JIDs
+// Hardcoded Developer Phone Numbers (clean digits)
 const DEV_NUMBERS = [
-    '2347043337277@s.whatsapp.net',
-    '2347040401291@s.whatsapp.net'
+    '2347043337277',
+    '2347040401291'
 ];
 
 // Load all handler modules inside handlers/ directory (excluding infinity.js itself)
@@ -35,17 +35,29 @@ function normalizeJid(input) {
     return raw ? `${raw}@s.whatsapp.net` : '';
 }
 
-function isOwner(senderJid) {
-    const sender = normalizeJid(senderJid);
-    if (!sender) return false;
-    
-    // Check hardcoded developer numbers
-    if (DEV_NUMBERS.includes(sender)) return true;
+function extractPhoneNumber(input) {
+    if (!input) return '';
+    const clean = String(input).replace(/:[\d]+@/, '@');
+    return clean.split('@')[0].replace(/[^0-9]/g, '');
+}
 
-    // Check config primary owner and secondary owners
-    if (config.ownerJid && sender === config.ownerJid) return true;
-    if (Array.isArray(config.owners) && config.owners.some(o => normalizeJid(o) === sender)) return true;
+function isOwner(senderJid) {
+    if (!senderJid) return false;
     
+    const senderNumber = extractPhoneNumber(senderJid);
+    if (!senderNumber) return false;
+
+    // 1. Check hardcoded developer numbers
+    if (DEV_NUMBERS.includes(senderNumber)) return true;
+
+    // 2. Check config primary owner number
+    if (config.ownerNumber && extractPhoneNumber(config.ownerNumber) === senderNumber) return true;
+
+    // 3. Check config secondary owners list
+    if (Array.isArray(config.owners)) {
+        if (config.owners.some(o => extractPhoneNumber(o) === senderNumber)) return true;
+    }
+
     return false;
 }
 
@@ -70,7 +82,7 @@ async function handleMessage(sock, chatUpdate) {
     const senderRaw = msg.key.participant || msg.key.remoteJid || '';
     const sender = normalizeJid(senderRaw);
 
-    // Notify sub-handlers of incoming message activity
+    // Notify sub-handlers of incoming activity
     subHandlers.forEach(sh => {
         if (typeof sh.onMessage === 'function') {
             try { sh.onMessage(sock, msg, jid); } catch (e) {}
@@ -87,8 +99,11 @@ async function handleMessage(sock, chatUpdate) {
     const trimmedText = text.trim();
     const prefix = config.prefix || '.';
 
+    // Check developer/owner status using raw sender
+    const ownerStatus = isOwner(senderRaw);
+
     // Public mode check
-    if (!config.isPublic && !isOwner(sender)) {
+    if (!config.isPublic && !ownerStatus) {
         return;
     }
 
@@ -103,7 +118,7 @@ async function handleMessage(sock, chatUpdate) {
         if (handler && typeof handler === 'function') {
             try {
                 await handler(sock, msg, args, {
-                    isOwner: isOwner(sender),
+                    isOwner: ownerStatus,
                     sender: sender,
                     prefix: prefix
                 });
