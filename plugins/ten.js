@@ -6,7 +6,7 @@ const axios = require('axios');
 const INVENTORY_PATH = path.join(__dirname, '..', 'storage', 'ben10_inventory.json');
 const activeSpawns = new Map();
 
-// Download image buffer with full browser headers to bypass Wikia CDN blocks
+// Helper to download image buffers with custom headers
 async function getImageBuffer(url) {
     try {
         const response = await axios.get(url, {
@@ -14,30 +14,58 @@ async function getImageBuffer(url) {
             timeout: 10000,
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Referer': 'https://ben10.fandom.com/'
+                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
             }
         });
         return Buffer.from(response.data);
     } catch (e) {
-        console.error('[TEN] Image download fallback triggered:', e.message);
+        console.error('[TEN] Image download error:', e.message);
         return null;
     }
 }
 
-// Reliable direct Ben 10 Alien Database
+// Ben 10 Alien Database with Wikia Revision Scaling Links (Fixes 403 Forbidden)
 const BEN10_ALIENS = [
-    { name: "Heatblast", species: "Pyronite", homeworld: "Pyros", power: 8500, abilities: "Pyrokinesis, Flight", image: "https://static.wikia.nocookie.net/ben10/images/d/d5/Heatblast_OS_Official.png" },
-    { name: "XLR8", species: "Kineceleran", homeworld: "Kinet", power: 8200, abilities: "Super Speed, Sharp Claws", image: "https://static.wikia.nocookie.net/ben10/images/7/73/XLR8_OS_Official.png" },
-    { name: "Four Arms", species: "Tetramand", homeworld: "Khoros", power: 9000, abilities: "Enhanced Strength, Sonic Clap", image: "https://static.wikia.nocookie.net/ben10/images/c/cb/Four_Arms_OS_Official.png" },
-    { name: "Diamondhead", species: "Petrosapien", homeworld: "Petropia", power: 8800, abilities: "Crystallokinesis, Shielding", image: "https://static.wikia.nocookie.net/ben10/images/d/d4/Diamondhead_OS_Official.png" },
-    { name: "Cannonbolt", species: "Arburian Pelarota", homeworld: "Arburia", power: 8600, abilities: "Sphere Shell, Ricochet", image: "https://static.wikia.nocookie.net/ben10/images/1/1a/Cannonbolt_OS_Official.png" },
-    { name: "Swampfire", species: "Methanosian", homeworld: "Methanos", power: 9200, abilities: "Chlorokinesis, Fire Blast", image: "https://static.wikia.nocookie.net/ben10/images/e/e4/Swampfire_AF_Official.png" },
-    { name: "Humungousaur", species: "Vaxasaurian", homeworld: "Terradino", power: 9500, abilities: "Size Growth, Super Strength", image: "https://static.wikia.nocookie.net/ben10/images/3/36/Humungousaur_AF_Official.png" },
-    { name: "Big Chill", species: "Necrofriggian", homeworld: "Kylmyys", power: 9100, abilities: "Freeze Breath, Intangibility", image: "https://static.wikia.nocookie.net/ben10/images/2/23/Big_Chill_AF_Official.png" },
-    { name: "Alien X", species: "Celestialsapien", homeworld: "Forge of Creation", power: 100000, abilities: "Omnipotence, Reality Warping", image: "https://static.wikia.nocookie.net/ben10/images/d/d6/Alien_X_AF_Official.png" },
-    { name: "Feedback", species: "Conductoid", homeworld: "Teslavorr", power: 9400, abilities: "Energy Absorption", image: "https://static.wikia.nocookie.net/ben10/images/7/77/Feedback_OV_Official.png" }
+    { 
+        name: "Heatblast", species: "Pyronite", homeworld: "Pyros", power: 8500, abilities: "Pyrokinesis, Flight", 
+        image: "https://static.wikia.nocookie.net/ben10/images/d/d5/Heatblast_OS_Official.png/revision/latest/scale-to-width-down/500" 
+    },
+    { 
+        name: "XLR8", species: "Kineceleran", homeworld: "Kinet", power: 8200, abilities: "Super Speed, Sharp Claws", 
+        image: "https://static.wikia.nocookie.net/ben10/images/7/73/XLR8_OS_Official.png/revision/latest/scale-to-width-down/500" 
+    },
+    { 
+        name: "Four Arms", species: "Tetramand", homeworld: "Khoros", power: 9000, abilities: "Enhanced Strength, Sonic Clap", 
+        image: "https://static.wikia.nocookie.net/ben10/images/c/cb/Four_Arms_OS_Official.png/revision/latest/scale-to-width-down/500" 
+    },
+    { 
+        name: "Diamondhead", species: "Petrosapien", homeworld: "Petropia", power: 8800, abilities: "Crystallokinesis, Shielding", 
+        image: "https://static.wikia.nocookie.net/ben10/images/d/d4/Diamondhead_OS_Official.png/revision/latest/scale-to-width-down/500" 
+    },
+    { 
+        name: "Cannonbolt", species: "Arburian Pelarota", homeworld: "Arburia", power: 8600, abilities: "Sphere Shell, Ricochet", 
+        image: "https://static.wikia.nocookie.net/ben10/images/1/1a/Cannonbolt_OS_Official.png/revision/latest/scale-to-width-down/500" 
+    },
+    { 
+        name: "Swampfire", species: "Methanosian", homeworld: "Methanos", power: 9200, abilities: "Chlorokinesis, Fire Blast", 
+        image: "https://static.wikia.nocookie.net/ben10/images/e/e4/Swampfire_AF_Official.png/revision/latest/scale-to-width-down/500" 
+    },
+    { 
+        name: "Humungousaur", species: "Vaxasaurian", homeworld: "Terradino", power: 9500, abilities: "Size Growth, Super Strength", 
+        image: "https://static.wikia.nocookie.net/ben10/images/3/36/Humungousaur_AF_Official.png/revision/latest/scale-to-width-down/500" 
+    },
+    { 
+        name: "Big Chill", species: "Necrofriggian", homeworld: "Kylmyys", power: 9100, abilities: "Freeze Breath, Intangibility", 
+        image: "https://static.wikia.nocookie.net/ben10/images/2/23/Big_Chill_AF_Official.png/revision/latest/scale-to-width-down/500" 
+    },
+    { 
+        name: "Alien X", species: "Celestialsapien", homeworld: "Forge of Creation", power: 100000, abilities: "Omnipotence, Reality Warping", 
+        image: "https://static.wikia.nocookie.net/ben10/images/d/d6/Alien_X_AF_Official.png/revision/latest/scale-to-width-down/500" 
+    },
+    { 
+        name: "Feedback", species: "Conductoid", homeworld: "Teslavorr", power: 9400, abilities: "Energy Absorption", 
+        image: "https://static.wikia.nocookie.net/ben10/images/7/77/Feedback_OV_Official.png/revision/latest/scale-to-width-down/500" 
+    }
 ];
 
 function loadInventory() {
@@ -97,7 +125,6 @@ const alienCmd = {
 
 Use *${ctx.prefix}claimalien ${captcha}* to claim this DNA!`;
 
-            // Download image buffer with full browser headers
             const imgBuffer = await getImageBuffer(alien.image);
 
             if (imgBuffer) {
