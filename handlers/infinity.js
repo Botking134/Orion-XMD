@@ -10,6 +10,9 @@ const DEV_NUMBERS = [
     '2347040401291'
 ];
 
+// In-memory mapping to cache known LIDs -> Phone Numbers
+const lidToPhoneMap = new Map();
+
 // Load all handler modules inside handlers/ directory (excluding infinity.js itself)
 const subHandlers = [];
 const handlersDir = __dirname;
@@ -41,27 +44,52 @@ function extractPhoneNumber(input) {
     return clean.split('@')[0].replace(/[^0-9]/g, '');
 }
 
-function isOwner(senderJid) {
-    if (!senderJid) return false;
-    
-    const senderNumber = extractPhoneNumber(senderJid);
-    if (!senderNumber) return false;
+/**
+ * Checks if a message or sender belongs to an Owner / Developer
+ */
+function isOwner(sock, msg, senderJid) {
+    // 1. If message is sent from the owner's own phone / device (fromMe === true)
+    if (msg && msg.key && msg.key.fromMe) {
+        return true;
+    }
 
-    // 1. Check hardcoded developer numbers
-    if (DEV_NUMBERS.includes(senderNumber)) return true;
+    // 2. Check if sender matches the connected bot user ID or LID
+    if (sock && sock.user) {
+        const botJid = sock.user.id ? normalizeJid(sock.user.id) : '';
+        const botLid = sock.user.lid ? normalizeJid(sock.user.lid) : '';
+        const normSender = normalizeJid(senderJid);
 
-    // 2. Check config primary owner number
-    if (config.ownerNumber && extractPhoneNumber(config.ownerNumber) === senderNumber) return true;
+        if (normSender && (normSender === botJid || normSender === botLid)) {
+            return true;
+        }
+    }
 
-    // 3. Check config secondary owners list
-    if (Array.isArray(config.owners)) {
-        if (config.owners.some(o => extractPhoneNumber(o) === senderNumber)) return true;
+    // 3. Extract phone numbers from JID and Alternate JIDs
+    const altJid = msg?.key?.participantAlt || msg?.key?.remoteJidAlt || '';
+    const phoneFromSender = extractPhoneNumber(senderJid);
+    const phoneFromAlt = extractPhoneNumber(altJid);
+    const cachedPhone = lidToPhoneMap.get(senderJid);
+
+    const candidates = [phoneFromSender, phoneFromAlt, cachedPhone].filter(Boolean);
+
+    for (const phone of candidates) {
+        // Check hardcoded developer numbers
+        if (DEV_NUMBERS.includes(phone)) {
+            return true;
+        }
+        // Check config primary owner
+        if (config.ownerNumber && extractPhoneNumber(config.ownerNumber) === phone) {
+            return true;
+        }
+        // Check secondary owners list
+        if (Array.isArray(config.owners) && config.owners.some(o => extractPhoneNumber(o) === phone)) {
+            return true;
+        }
     }
 
     return false;
 }
 
-// Track if background spawner loops have been initialized
 let initializedSpawners = false;
 
 async function handleMessage(sock, chatUpdate) {
@@ -82,7 +110,15 @@ async function handleMessage(sock, chatUpdate) {
     const senderRaw = msg.key.participant || msg.key.remoteJid || '';
     const sender = normalizeJid(senderRaw);
 
-    // Notify sub-handlers of incoming activity
+    // Cache LID to JID mapping if participantAlt is present
+    if (senderRaw.endsWith('@lid') && msg.key.participantAlt) {
+        const altPhone = extractPhoneNumber(msg.key.participantAlt);
+        if (altPhone) {
+            lidToPhoneMap.set(senderRaw, altPhone);
+        }
+    }
+
+    // Notify sub-handlers
     subHandlers.forEach(sh => {
         if (typeof sh.onMessage === 'function') {
             try { sh.onMessage(sock, msg, jid); } catch (e) {}
@@ -99,8 +135,8 @@ async function handleMessage(sock, chatUpdate) {
     const trimmedText = text.trim();
     const prefix = config.prefix || '.';
 
-    // Check developer/owner status using raw sender
-    const ownerStatus = isOwner(senderRaw);
+    // Check owner status with full LID resolution
+    const ownerStatus = isOwner(sock, msg, senderRaw);
 
     // Public mode check
     if (!config.isPublic && !ownerStatus) {
