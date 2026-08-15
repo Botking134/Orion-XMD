@@ -9,7 +9,19 @@ const config = require('./config');
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const question = (text) => new Promise((resolve) => rl.question(text, resolve));
 
+// Single socket instance reference to prevent multi-instance conflict
+let currentSock = null;
+
 async function startBot() {
+    // Clean up previous socket instance if present
+    if (currentSock) {
+        try {
+            currentSock.ev.removeAllListeners();
+            currentSock.end(new Error('Reconnecting socket...'));
+        } catch (e) {}
+        currentSock = null;
+    }
+
     // Import @itsliaaa/baileys modules
     const {
         default: makeWASocket,
@@ -38,13 +50,21 @@ async function startBot() {
         console.log(`\x1b[33m⏳ Requesting Pairing Code for +${phoneNumber}...\x1b[0m\n`);
     }
 
-    // Create WASocket instance
+    // Create WASocket instance with stability parameters
     const sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
         logger: require('pino')({ level: 'silent' }),
-        browser: Browsers.ubuntu('Chrome')
+        browser: Browsers.ubuntu('Chrome'),
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 60000,
+        keepAliveIntervalMs: 25000,
+        generateHighQualityLinkPreview: false,
+        markOnlineOnConnect: true,
+        syncFullHistory: false
     });
+
+    currentSock = sock;
 
     sock.ev.on('creds.update', saveCreds);
 
@@ -59,7 +79,6 @@ async function startBot() {
             pairingCodeRequested = true;
             await delay(4000);
             try {
-                // Pass only the phone number so WhatsApp generates a valid 8-character pairing code
                 const code = await sock.requestPairingCode(phoneNumber);
                 console.log(`\x1b[32m====================================\x1b[0m`);
                 console.log(`\x1b[32m🔑 YOUR ORION-XMD PAIRING CODE: \x1b[1m\x1b[37m${code}\x1b[0m`);
@@ -71,7 +90,7 @@ async function startBot() {
             }
         }
 
-        // Connection Closed
+        // Connection Closed Handler
         if (connection === 'close') {
             const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
             console.error('\x1b[31m⚠️ Connection closed. Status Code:', statusCode, '\x1b[0m');
@@ -79,6 +98,10 @@ async function startBot() {
             if (statusCode === DisconnectReason.loggedOut) {
                 console.log('\x1b[31m❌ Session logged out. Please clear storage/session and re-pair.\x1b[0m');
                 process.exit(1);
+            } else if (statusCode === 428) {
+                // Precondition / replaced session: Wait 10 seconds before reconnecting to let old connection release
+                console.log('\x1b[33m🔄 Session conflict detected (428). Reconnecting in 10 seconds...\x1b[0m');
+                setTimeout(() => startBot(), 10000);
             } else {
                 console.log('\x1b[33m🔄 Reconnecting in 5 seconds...\x1b[0m');
                 setTimeout(() => startBot(), 5000);
@@ -88,15 +111,10 @@ async function startBot() {
         // Connection Established
         if (connection === 'open') {
             console.log('\x1b[32m✅ Orion-XMD Connected Successfully!\x1b[0m');
-
-            // Always-Online Presence Update
-            setInterval(async () => {
-                try { await sock.sendPresenceUpdate('available'); } catch (e) {}
-            }, 15000);
         }
     });
 
-    // Message Upsert Event Listener (points to handlers/infinity.js)
+    // Message Upsert Event Listener
     sock.ev.on('messages.upsert', async (chatUpdate) => {
         try {
             const infinity = require('./handlers/infinity');
@@ -108,7 +126,7 @@ async function startBot() {
         }
     });
 
-    // Group Participant Update Listener (points to handlers/infinity.js)
+    // Group Participant Update Listener
     sock.ev.on('group-participants.update', async (update) => {
         try {
             const infinity = require('./handlers/infinity');
