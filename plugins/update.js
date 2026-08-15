@@ -13,25 +13,25 @@ module.exports = {
             return;
         }
 
-        await sock.sendMessage(jid, { text: '🔄 *Checking repository for updates...*' }, { quoted: msg });
+        await sock.sendMessage(jid, { text: '🔄 *Pulling latest updates from GitHub (https://github.com/Botking134/orion-XMD)...*' }, { quoted: msg });
 
-        // Execute git pull
-        exec('git pull', async (error, stdout, stderr) => {
+        // Explicitly pull from origin main
+        exec('git pull origin main', async (error, stdout, stderr) => {
             if (error) {
                 console.error('[UPDATE] Git pull error:', error.message);
                 await sock.sendMessage(jid, { text: `❌ *Update Failed:*\n\`\`\`${error.message}\`\`\`` }, { quoted: msg });
                 return;
             }
 
-            if (stderr && stderr.includes('error:')) {
-                await sock.sendMessage(jid, { text: `❌ *Git Error:*\n\`\`\`${stderr}\`\`\`` }, { quoted: msg });
+            if (stderr && stderr.includes('fatal:')) {
+                await sock.sendMessage(jid, { text: `❌ *Git Fatal Error:*\n\`\`\`${stderr}\`\`\`` }, { quoted: msg });
                 return;
             }
 
             const output = stdout.trim();
 
             if (output.includes('Already up to date.') || output.includes('Already up-to-date.')) {
-                await sock.sendMessage(jid, { text: '✅ *Orion-XMD is already up to date!*' }, { quoted: msg });
+                await sock.sendMessage(jid, { text: '✅ *Orion-XMD is already up to date with origin/main!*' }, { quoted: msg });
                 return;
             }
 
@@ -43,7 +43,7 @@ module.exports = {
                 }, { quoted: msg });
             } catch (reloadErr) {
                 await sock.sendMessage(jid, {
-                    text: `⚠️ *Git Pulled, but Reload Failed:*\n\`\`\`${reloadErr.message}\`\`\``
+                    text: `⚠️ *Git Pulled, but Plugin Reload Failed:*\n\`\`\`${reloadErr.message}\`\`\``
                 }, { quoted: msg });
             }
         });
